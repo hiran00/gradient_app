@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let colorPoints = [];
     let draggingPoint = null;
+    let hoveredPoint = null;
+    let resizingPoint = null;
 
     // --- Config ---
     const LOW_RES_SCALE = 0.3; // Render on a smaller canvas for performance
@@ -141,21 +143,43 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Main Draw Call ---
     function redrawCanvas() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        // For the preview, the points are already in the correct coordinate system.
         renderGradientToCanvas(canvas, colorPoints);
 
-        // Draw handles on top
         if (isDraggingEnabled) {
             ctx.filter = 'none';
             ctx.globalCompositeOperation = 'source-over';
             colorPoints.forEach(point => {
+                // Draw main color point handle
                 ctx.beginPath();
                 ctx.arc(point.x, point.y, 10, 0, 2 * Math.PI);
                 ctx.fillStyle = point.color;
-                ctx.strokeStyle = '#ffffff';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
                 ctx.lineWidth = 2;
                 ctx.fill();
                 ctx.stroke();
+
+                // Draw radius control handle on hover
+                if (point === hoveredPoint) {
+                    // Draw the radius outline
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, point.radius, 0, 2 * Math.PI);
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([4, 4]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Draw the draggable handle on the radius edge
+                    const handleX = point.x + point.radius;
+                    const handleY = point.y;
+                    ctx.beginPath();
+                    ctx.arc(handleX, handleY, 8, 0, 2 * Math.PI);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+                    ctx.lineWidth = 1;
+                    ctx.fill();
+                    ctx.stroke();
+                }
             });
         }
     }
@@ -243,20 +267,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         colorPoints.forEach((point, index) => {
-            // Assign a region to each point, cycling through the regions if needed
             const region = regions[index % regions.length];
-
-            // Calculate a random position within that region
             const minX = region.x[0] * width;
             const maxX = region.x[1] * width;
             const minY = region.y[0] * height;
             const maxY = region.y[1] * height;
 
-            point.x = minX + Math.random() * (maxX - minX);
-            point.y = minY + Math.random() * (maxY - minY);
-
-            // Keep the large radius to ensure points overlap and blend well
-            point.radius = Math.random() * 150 + (width * 0.6);
+            point.x = Math.random() * (maxX - minX) + minX;
+            point.y = Math.random() * (maxY - minY) + minY;
+            point.radius = Math.random() * (width / 4) + (width / 4);
         });
 
         redrawCanvas();
@@ -315,15 +334,35 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Canvas Mouse Events ---
     canvas.addEventListener('mousedown', (e) => {
         if (!isDraggingEnabled) return;
+
         const rect = canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mouseX = (e.clientX - rect.left) * scaleX;
+        const mouseY = (e.clientY - rect.top) * scaleY;
+
+        // Check if resizing handle is clicked
+        if (hoveredPoint) {
+            const handleX = hoveredPoint.x + hoveredPoint.radius;
+            const handleY = hoveredPoint.y;
+            const dxHandle = mouseX - handleX;
+            const dyHandle = mouseY - handleY;
+            if (Math.sqrt(dxHandle * dxHandle + dyHandle * dyHandle) < 10) {
+                resizingPoint = hoveredPoint;
+                draggingPoint = null; // Ensure no conflict with point dragging
+                canvas.style.cursor = 'ew-resize';
+                return;
+            }
+        }
+
+        // Check if a color point is clicked for dragging
         for (let i = colorPoints.length - 1; i >= 0; i--) {
             const point = colorPoints[i];
             const dx = mouseX - point.x;
             const dy = mouseY - point.y;
-            if (Math.sqrt(dx * dx + dy * dy) < 20) {
+            if (Math.sqrt(dx * dx + dy * dy) < 10) { // Main handle hit detection
                 draggingPoint = point;
+                resizingPoint = null; // Ensure no conflict
                 canvas.style.cursor = 'grabbing';
                 return;
             }
@@ -331,15 +370,71 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     canvas.addEventListener('mousemove', (e) => {
-        if (!draggingPoint) return;
         const rect = canvas.getBoundingClientRect();
-        draggingPoint.x = e.clientX - rect.left;
-        draggingPoint.y = e.clientY - rect.top;
-        redrawCanvas();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mouseX = (e.clientX - rect.left) * scaleX;
+        const mouseY = (e.clientY - rect.top) * scaleY;
+
+        if (resizingPoint) {
+            const dx = mouseX - resizingPoint.x;
+            const dy = mouseY - resizingPoint.y;
+            resizingPoint.radius = Math.max(20, Math.sqrt(dx * dx + dy * dy)); // Min radius
+            redrawCanvas();
+            return;
+        }
+
+        if (draggingPoint) {
+            draggingPoint.x = mouseX;
+            draggingPoint.y = mouseY;
+            redrawCanvas();
+            return;
+        }
+
+        // Hover detection
+        if (!isDraggingEnabled) return;
+
+        let foundPoint = null;
+        for (const point of colorPoints) {
+            const dx = mouseX - point.x;
+            const dy = mouseY - point.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            // Check for hover over main handle OR radius handle
+            const handleX = point.x + point.radius;
+            const handleY = point.y;
+            const dxHandle = mouseX - handleX;
+            const dyHandle = mouseY - handleY;
+            const distHandle = Math.sqrt(dxHandle * dxHandle + dyHandle * dyHandle);
+
+            if (dist < 10 || distHandle < 10) {
+                foundPoint = point;
+                break;
+            }
+        }
+
+        if (hoveredPoint !== foundPoint) {
+            hoveredPoint = foundPoint;
+            if (hoveredPoint) {
+                const handleX = hoveredPoint.x + hoveredPoint.radius;
+                const handleY = hoveredPoint.y;
+                const dxHandle = mouseX - handleX;
+                const dyHandle = mouseY - handleY;
+                if (Math.sqrt(dxHandle*dxHandle + dyHandle*dyHandle) < 10) {
+                    canvas.style.cursor = 'ew-resize';
+                } else {
+                    canvas.style.cursor = 'grab';
+                }
+            } else {
+                 canvas.style.cursor = 'grab';
+            }
+            redrawCanvas();
+        }
     });
 
     canvas.addEventListener('mouseup', () => {
         draggingPoint = null;
+        resizingPoint = null;
         canvas.style.cursor = isDraggingEnabled ? 'grab' : 'default';
     });
 
@@ -437,6 +532,7 @@ document.addEventListener('DOMContentLoaded', () => {
     adjustPositionToggle.addEventListener('change', (e) => {
         isDraggingEnabled = e.target.checked;
         canvas.style.cursor = isDraggingEnabled ? 'grab' : 'default';
+        redrawCanvas();
     });
 
     downloadJpgBtn.addEventListener('click', () => downloadImage('jpeg'));
