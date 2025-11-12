@@ -437,6 +437,7 @@ document.addEventListener('DOMContentLoaded', () => {
     adjustPositionToggle.addEventListener('change', (e) => {
         isDraggingEnabled = e.target.checked;
         canvas.style.cursor = isDraggingEnabled ? 'grab' : 'default';
+        redrawCanvas();
     });
 
     downloadJpgBtn.addEventListener('click', () => downloadImage('jpeg'));
