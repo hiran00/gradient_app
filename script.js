@@ -103,28 +103,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
         for (let y = 0; y < lowResHeight; y++) {
             for (let x = 0; x < lowResWidth; x++) {
-                let r = 0, g = 0, b = 0, totalInfluence = 0;
+                let r = 0, g = 0, b = 0, totalWeight = 0;
                 for (const point of lowResPoints) {
                     const dx = x - point.x;
                     const dy = y - point.y;
                     const distSq = dx * dx + dy * dy;
-                    const radiusSq = point.radius * point.radius;
-                    if (distSq < radiusSq) {
-                        const influence = 1 - (distSq / radiusSq);
-                        const influenceCubed = influence * influence * influence;
-                        r += point.color.r * influenceCubed;
-                        g += point.color.g * influenceCubed;
-                        b += point.color.b * influenceCubed;
-                        totalInfluence += influenceCubed;
-                    }
+                    // Use a Gaussian-like weight. The further the distance, the less the influence.
+                    // The 'sharpness' of the falloff is controlled by the radius. A larger radius means a gentler slope.
+                    const weight = Math.exp(-distSq / (2 * point.radius * point.radius));
+
+                    r += point.color.r * weight;
+                    g += point.color.g * weight;
+                    b += point.color.b * weight;
+                    totalWeight += weight;
                 }
                 const base = (y * lowResWidth + x) * 4;
-                if (totalInfluence > 0) {
-                    pixels[base] = r / totalInfluence;
-                    pixels[base + 1] = g / totalInfluence;
-                    pixels[base + 2] = b / totalInfluence;
-                    pixels[base + 3] = 255;
-                }
+                // Normalize the colors by the total weight
+                pixels[base] = r / totalWeight;
+                pixels[base + 1] = g / totalWeight;
+                pixels[base + 2] = b / totalWeight;
+                pixels[base + 3] = 255; // Alpha channel
             }
         }
         lowResCtx.putImageData(imageData, 0, 0);
@@ -169,16 +167,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     ctx.stroke();
                     ctx.setLineDash([]);
 
-                    // Draw the draggable handle on the radius edge
-                    const handleX = point.x + point.radius;
-                    const handleY = point.y;
-                    ctx.beginPath();
-                    ctx.arc(handleX, handleY, 8, 0, 2 * Math.PI);
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-                    ctx.lineWidth = 1;
-                    ctx.fill();
-                    ctx.stroke();
                 }
             });
         }
@@ -341,28 +329,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const mouseX = (e.clientX - rect.left) * scaleX;
         const mouseY = (e.clientY - rect.top) * scaleY;
 
-        // Check if resizing handle is clicked
-        if (hoveredPoint) {
-            const handleX = hoveredPoint.x + hoveredPoint.radius;
-            const handleY = hoveredPoint.y;
-            const dxHandle = mouseX - handleX;
-            const dyHandle = mouseY - handleY;
-            if (Math.sqrt(dxHandle * dxHandle + dyHandle * dyHandle) < 10) {
-                resizingPoint = hoveredPoint;
-                draggingPoint = null; // Ensure no conflict with point dragging
-                canvas.style.cursor = 'ew-resize';
-                return;
-            }
-        }
-
-        // Check if a color point is clicked for dragging
+        // Check for resize or drag, starting from the top-most point
         for (let i = colorPoints.length - 1; i >= 0; i--) {
             const point = colorPoints[i];
             const dx = mouseX - point.x;
             const dy = mouseY - point.y;
-            if (Math.sqrt(dx * dx + dy * dy) < 10) { // Main handle hit detection
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            // Check if the click is on the radius outline for resizing
+            if (Math.abs(dist - point.radius) < 10) { // 10px tolerance for resizing
+                resizingPoint = point;
+                draggingPoint = null;
+                canvas.style.cursor = 'nwse-resize';
+                return;
+            }
+
+            // Check if the click is on the center handle for dragging
+            if (dist < 10) { // 10px tolerance for dragging
                 draggingPoint = point;
-                resizingPoint = null; // Ensure no conflict
+                resizingPoint = null;
                 canvas.style.cursor = 'grabbing';
                 return;
             }
@@ -395,33 +380,29 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isDraggingEnabled) return;
 
         let foundPoint = null;
+        let onResizeHandle = false;
         for (const point of colorPoints) {
             const dx = mouseX - point.x;
             const dy = mouseY - point.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            // Check for hover over main handle OR radius handle
-            const handleX = point.x + point.radius;
-            const handleY = point.y;
-            const dxHandle = mouseX - handleX;
-            const dyHandle = mouseY - handleY;
-            const distHandle = Math.sqrt(dxHandle * dxHandle + dyHandle * dyHandle);
-
-            if (dist < 10 || distHandle < 10) {
+            if (dist < 10) { // Hovering over the center handle
                 foundPoint = point;
+                onResizeHandle = false;
+                break;
+            }
+            if (Math.abs(dist - point.radius) < 10) { // Hovering over the radius outline
+                foundPoint = point;
+                onResizeHandle = true;
                 break;
             }
         }
 
-        if (hoveredPoint !== foundPoint) {
+        if (hoveredPoint !== foundPoint || (hoveredPoint === foundPoint && onResizeHandle !== (canvas.style.cursor === 'nwse-resize'))) {
             hoveredPoint = foundPoint;
             if (hoveredPoint) {
-                const handleX = hoveredPoint.x + hoveredPoint.radius;
-                const handleY = hoveredPoint.y;
-                const dxHandle = mouseX - handleX;
-                const dyHandle = mouseY - handleY;
-                if (Math.sqrt(dxHandle*dxHandle + dyHandle*dyHandle) < 10) {
-                    canvas.style.cursor = 'ew-resize';
+                if (onResizeHandle) {
+                    canvas.style.cursor = 'nwse-resize';
                 } else {
                     canvas.style.cursor = 'grab';
                 }
