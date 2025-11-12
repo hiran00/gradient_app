@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Freeform Gradient Generator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <div class="control-section">
+                <h2 class="section-title">COLORS</h2>
+                <div class="custom-palette-section">
+                    <label>Custom Palette:</label>
+                    <div id="color-points">
+                        <!-- Color points will be added here -->
+                    </div>
+                    <button id="add-color-point-btn">+</button>
+                </div>
+                <button id="randomize-colors-btn" class="control-button">Randomize Colors</button>
+            </div>
+            <div class="control-section">
+                <label>Choose Palette:</label>
+                <div class="custom-select-wrapper">
+                    <div class="custom-select">
+                        <div class="custom-select-trigger">
+                            <span>Select a Palette</span>
+                            <div class="arrow"></div>
+                        </div>
+                        <div class="custom-options">
+                            <!-- Options will be populated by script.js -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="control-section">
+                <label>Adjust color position:</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="adjust-position-toggle" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="control-section">
+                <h2 class="section-title">EXPORT</h2>
+                <div class="resolution-controls">
+                    <div class="resolution-input">
+                        <label for="res-width">Width</label>
+                        <input type="number" id="res-width" value="6000" step="10">
+                    </div>
+                    <div class="resolution-input">
+                        <label for="res-height">Height</label>
+                        <input type="number" id="res-height" value="4000" step="10">
+                    </div>
+                </div>
+                <div class="resolution-presets">
+                    <button class="preset-btn" data-width="7880" data-height="2900">7880x2900</button>
+                    <button class="preset-btn" data-width="6000" data-height="4000">6000x4000</button>
+                    <button class="preset-btn" data-width="5900" data-height="2700">5900x2700</button>
+                </div>
+                <button id="download-jpg-btn" class="control-button">Download JPG</button>
+            </div>
+        </div>
+        <div class="preview-container">
+            <div class="preview-frame">
+                <canvas id="gradient-canvas" width="900" height="600"></canvas>
+                <button id="refresh-shape-btn" class="refresh-circle-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M23 4v6h-6"></path>
+                        <path d="M1 20v-6h6"></path>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L20.5 10"></path>
+                        <path d="M20.49 15a9 9 0 0 1-14.85 3.36L3.5 14"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
