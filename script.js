@@ -71,29 +71,31 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- New Fluid Rendering Engine ---
-    // This function performs the core metaball rendering.
-    // It expects points with coordinates and radii already scaled for the target canvas.
-    function renderGradientToCanvas(targetCanvas, points) {
+    function renderGradientToCanvas(targetCanvas, points, quality = 'low') {
         const targetCtx = targetCanvas.getContext('2d');
         const width = targetCanvas.width;
         const height = targetCanvas.height;
 
-        // Create a low-resolution canvas for the metaball calculation
-        const lowResCanvas = document.createElement('canvas');
-        const lowResWidth = width * LOW_RES_SCALE;
-        const lowResHeight = height * LOW_RES_SCALE;
-        lowResCanvas.width = lowResWidth;
-        lowResCanvas.height = lowResHeight;
-        const lowResCtx = lowResCanvas.getContext('2d');
+        const isLowQuality = quality === 'low';
+        const scale = isLowQuality ? LOW_RES_SCALE : 1;
 
-        const imageData = lowResCtx.getImageData(0, 0, lowResWidth, lowResHeight);
+        const renderCanvas = isLowQuality ? document.createElement('canvas') : targetCanvas;
+        const renderCtx = isLowQuality ? renderCanvas.getContext('2d') : targetCtx;
+        const renderWidth = width * scale;
+        const renderHeight = height * scale;
+
+        if (isLowQuality) {
+            renderCanvas.width = renderWidth;
+            renderCanvas.height = renderHeight;
+        }
+
+        const imageData = renderCtx.getImageData(0, 0, renderWidth, renderHeight);
         const pixels = imageData.data;
 
-        // Scale points to the low-resolution canvas
-        const lowResPoints = points.map(p => ({
-            x: p.x * LOW_RES_SCALE,
-            y: p.y * LOW_RES_SCALE,
-            radius: p.radius * LOW_RES_SCALE,
+        const scaledPoints = points.map(p => ({
+            x: p.x * scale,
+            y: p.y * scale,
+            radius: p.radius * scale,
             color: {
                 r: parseInt(p.color.slice(1, 3), 16),
                 g: parseInt(p.color.slice(3, 5), 16),
@@ -101,23 +103,23 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }));
 
-        for (let y = 0; y < lowResHeight; y++) {
-            for (let x = 0; x < lowResWidth; x++) {
+        for (let y = 0; y < renderHeight; y++) {
+            for (let x = 0; x < renderWidth; x++) {
                 let r = 0, g = 0, b = 0, totalWeight = 0;
-                for (const point of lowResPoints) {
+                for (const point of scaledPoints) {
                     const dx = x - point.x;
                     const dy = y - point.y;
                     const distSq = dx * dx + dy * dy;
-                    // Use a Gaussian-like weight. The further the distance, the less the influence.
-                    // The 'sharpness' of the falloff is controlled by the radius. A larger radius means a gentler slope.
-                    const weight = Math.exp(-distSq / (2 * point.radius * point.radius));
+                    // Adjust the denominator to control sharpness. A smaller value makes the falloff sharper.
+                    const sharpness = 0.5; // Lower value = sharper colors
+                    const weight = Math.exp(-distSq / (sharpness * point.radius * point.radius));
 
                     r += point.color.r * weight;
                     g += point.color.g * weight;
                     b += point.color.b * weight;
                     totalWeight += weight;
                 }
-                const base = (y * lowResWidth + x) * 4;
+                const base = (y * renderWidth + x) * 4;
                 // Normalize the colors by the total weight
                 pixels[base] = r / totalWeight;
                 pixels[base + 1] = g / totalWeight;
@@ -125,17 +127,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 pixels[base + 3] = 255; // Alpha channel
             }
         }
-        lowResCtx.putImageData(imageData, 0, 0);
+        renderCtx.putImageData(imageData, 0, 0);
 
-        targetCtx.save();
-        const bleed = 0.1;
-        const bleedX = width * bleed;
-        const bleedY = height * bleed;
-        // Blur amount should be relative to the size of the canvas for consistent look
-        const blurAmount = Math.min(width, height) * 0.04;
-        targetCtx.filter = `blur(${blurAmount}px)`;
-        targetCtx.drawImage(lowResCanvas, -bleedX, -bleedY, width + bleedX * 2, height + bleedY * 2);
-        targetCtx.restore();
+        if (isLowQuality) {
+            targetCtx.save();
+            const bleed = 0.1;
+            const bleedX = width * bleed;
+            const bleedY = height * bleed;
+            const blurAmount = Math.min(width, height) * 0.04;
+            targetCtx.filter = `blur(${blurAmount}px)`;
+            targetCtx.drawImage(renderCanvas, -bleedX, -bleedY, width + bleedX * 2, height + bleedY * 2);
+            targetCtx.restore();
+        }
     }
 
     // --- Main Draw Call ---
@@ -436,34 +439,44 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const offscreenCanvas = document.createElement('canvas');
-        offscreenCanvas.width = width;
-        offscreenCanvas.height = height;
+        // --- Loading Indicator ---
+        const downloadBtn = document.getElementById('download-jpg-btn');
+        const originalText = downloadBtn.textContent;
+        downloadBtn.textContent = 'Rendering...';
+        downloadBtn.disabled = true;
 
-        // Correctly scale the points for the export canvas.
-        const scaleX = width / canvas.width;
-        const scaleY = height / canvas.height;
+        // Use a timeout to allow the UI to update before the heavy computation begins
+        setTimeout(() => {
+            const offscreenCanvas = document.createElement('canvas');
+            offscreenCanvas.width = width;
+            offscreenCanvas.height = height;
 
-        // Use the geometric mean for the radius scaling to maintain circularity.
-        const radiusScale = Math.sqrt(scaleX * scaleY);
+            const scaleX = width / canvas.width;
+            const scaleY = height / canvas.height;
+            const radiusScale = Math.sqrt(scaleX * scaleY);
 
-        const scaledPoints = colorPoints.map(p => ({
-            ...p,
-            x: p.x * scaleX,
-            y: p.y * scaleY,
-            radius: p.radius * radiusScale
-        }));
+            const scaledPoints = colorPoints.map(p => ({
+                ...p,
+                x: p.x * scaleX,
+                y: p.y * scaleY,
+                radius: p.radius * radiusScale
+            }));
 
-        // Render the correctly scaled gradient to the offscreen canvas.
-        renderGradientToCanvas(offscreenCanvas, scaledPoints);
+            // --- Render in High Quality ---
+            renderGradientToCanvas(offscreenCanvas, scaledPoints, 'high');
 
-        offscreenCanvas.toBlob((blob) => {
-            const link = document.createElement('a');
-            link.download = `gradient-${Date.now()}.${format}`;
-            link.href = URL.createObjectURL(blob);
-            link.click();
-            URL.revokeObjectURL(link.href);
-        }, `image/${format}`, 0.95); // Use 0.95 quality for JPG
+            offscreenCanvas.toBlob((blob) => {
+                const link = document.createElement('a');
+                link.download = `gradient-${Date.now()}.${format}`;
+                link.href = URL.createObjectURL(blob);
+                link.click();
+                URL.revokeObjectURL(link.href);
+
+                // Restore button state
+                downloadBtn.textContent = originalText;
+                downloadBtn.disabled = false;
+            }, `image/${format}`, 1.0); // Use 1.0 quality for best results
+        }, 10);
     }
 
     // --- Utility & Initialization ---
