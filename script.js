@@ -316,13 +316,15 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.addEventListener('mousedown', (e) => {
         if (!isDraggingEnabled) return;
         const rect = canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mouseX = (e.clientX - rect.left) * scaleX;
+        const mouseY = (e.clientY - rect.top) * scaleY;
         for (let i = colorPoints.length - 1; i >= 0; i--) {
             const point = colorPoints[i];
             const dx = mouseX - point.x;
             const dy = mouseY - point.y;
-            if (Math.sqrt(dx * dx + dy * dy) < 20) {
+            if (Math.sqrt(dx * dx + dy * dy) < 20) { // Hit detection radius
                 draggingPoint = point;
                 canvas.style.cursor = 'grabbing';
                 return;
@@ -333,8 +335,10 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.addEventListener('mousemove', (e) => {
         if (!draggingPoint) return;
         const rect = canvas.getBoundingClientRect();
-        draggingPoint.x = e.clientX - rect.left;
-        draggingPoint.y = e.clientY - rect.top;
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        draggingPoint.x = (e.clientX - rect.left) * scaleX;
+        draggingPoint.y = (e.clientY - rect.top) * scaleY;
         redrawCanvas();
     });
 
@@ -437,6 +441,7 @@ document.addEventListener('DOMContentLoaded', () => {
     adjustPositionToggle.addEventListener('change', (e) => {
         isDraggingEnabled = e.target.checked;
         canvas.style.cursor = isDraggingEnabled ? 'grab' : 'default';
+        redrawCanvas();
     });
 
     downloadJpgBtn.addEventListener('click', () => downloadImage('jpeg'));
